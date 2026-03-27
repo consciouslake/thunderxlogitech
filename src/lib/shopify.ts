@@ -10,7 +10,7 @@ export const getShopify = () => {
       apiSecretKey: process.env.SHOPIFY_API_SECRET || "",
       scopes: ["read_orders", "write_fulfillments", "read_fulfillments"],
       hostName: process.env.APP_URL?.replace(/https?:\/\//, "") || "localhost:3000",
-      apiVersion: ApiVersion.October24, // Using a widely supported stable version
+      apiVersion: "2025-01" as any, // Using the latest version from dashboard
       isEmbeddedApp: false,
     });
   }
