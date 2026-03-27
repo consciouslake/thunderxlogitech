@@ -1,11 +1,13 @@
-import { shopify } from "@/lib/shopify";
-import { db } from "@/lib/db";
+import { getShopify } from "@/lib/shopify";
+import { getDb } from "@/lib/db";
 import { getCourierClient } from "@/lib/couriers";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
+  const shopify = getShopify();
+  const db = getDb();
   try {
     const { orderId, courier = "delhivery" } = await req.json();
 

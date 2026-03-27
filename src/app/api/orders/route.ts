@@ -1,10 +1,12 @@
-import { shopify } from "@/lib/shopify";
-import { db } from "@/lib/db";
+import { getShopify } from "@/lib/shopify";
+import { getDb } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const shopify = getShopify();
+  const db = getDb();
   try {
     // 1. Fetch unfulfilled and paid orders from Shopify
     const query = `

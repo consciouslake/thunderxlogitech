@@ -1,6 +1,3 @@
-import { db } from "@/lib/db";
-import { shopify } from "@/lib/shopify";
-
 export class InternalLogisticsClient {
   /**
    * Generate a unique internal AWB (e.g., DAL-10001)
@@ -22,9 +19,6 @@ export class InternalLogisticsClient {
     const random = Math.floor(1000 + Math.random() * 9000);
     const awb = `DAL-${timestamp}-${random}`;
     
-    // In a real app, you might save this to a separate 'Shipments' table
-    // but for now, we'll return it to the caller who updates the 'Order' table.
-    
     return {
       awb,
       trackingUrl: `/track/${awb}`, // Internal tracking URL
@@ -35,6 +29,11 @@ export class InternalLogisticsClient {
    * Update the status of an order and push to Shopify
    */
   async updateStatus(orderId: string, newStatus: string, location?: string, description?: string) {
+    const { getDb } = await import("@/lib/db");
+    const db = getDb();
+    const { getShopify } = await import("@/lib/shopify");
+    const shopify = getShopify();
+
     // 1. Update the local DB
     const order = await db.order.update({
       where: { id: orderId },
@@ -89,8 +88,6 @@ export class InternalLogisticsClient {
    * Mock getStatus for internal logistics (Satisfies sync job)
    */
   async getStatus(awb: string): Promise<{ status: string; events: any[] }> {
-    // In an internal system, status is pulled directly from our own DB
-    // This is just a mock to satisfy the existing sync job logic if needed.
     return {
       status: "IN_TRANSIT",
       events: []
