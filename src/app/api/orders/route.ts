@@ -2,6 +2,8 @@ import { shopify } from "@/lib/shopify";
 import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     // 1. Fetch unfulfilled and paid orders from Shopify

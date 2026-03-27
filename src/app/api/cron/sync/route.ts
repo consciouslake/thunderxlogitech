@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { getCourierClient } from "@/lib/couriers";
 import { NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: Request) {
   try {
     // 1. Secure the cron endpoint

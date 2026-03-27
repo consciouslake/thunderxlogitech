@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { getCourierClient } from "@/lib/couriers";
 import { NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(req: Request) {
   try {
     const { orderId, courier = "delhivery" } = await req.json();
