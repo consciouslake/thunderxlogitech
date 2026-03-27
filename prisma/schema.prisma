@@ -1,0 +1,67 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Order {
+  id                    String        @id @default(cuid())
+
+  // Shopify identifiers
+  shopifyOrderId        String        @unique  // gid://shopify/Order/630127...
+  shopifyOrderName      String                 // #1001
+  fulfillmentOrderId    String                 // gid://shopify/FulfillmentOrder/XXX
+  shopifyFulfillmentId  String?                // set after fulfillment created
+
+  // Customer info (copied from Shopify at sync time)
+  customerName          String
+  customerEmail         String
+  phone                 String?
+  shippingAddress       String
+  city                  String
+  state                 String
+  pincode               String
+  weight                Float?                 // kg, for courier booking
+
+  // Courier info
+  courier               String?                // "delhivery"
+  awb                   String?       @unique  // tracking number
+  trackingUrl           String?
+
+  // Status
+  status                OrderStatus   @default(PENDING)
+
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  trackingEvents        TrackingEvent[]
+}
+
+enum OrderStatus {
+  PENDING
+  SHIPMENT_CREATED
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  FAILED_DELIVERY
+  RETURNED
+  CANCELLED
+}
+
+model TrackingEvent {
+  id          String   @id @default(cuid())
+  order       Order    @relation(fields: [orderId], references: [id])
+  orderId     String
+
+  status      String
+  location    String?
+  description String?
+  timestamp   DateTime
+  syncedAt    DateTime @default(now())
+
+  @@unique([orderId, timestamp])
+  @@index([orderId])
+}
