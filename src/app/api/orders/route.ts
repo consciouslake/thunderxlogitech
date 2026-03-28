@@ -15,7 +15,9 @@ function safeJson(data: any) {
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const shop = searchParams.get("shop");
+  // Sanitize the shop name - remove trailing slash and trim whitespace
+  const rawShop = searchParams.get("shop");
+  const shop = rawShop?.trim().replace(/\/$/, "");
 
   if (!shop) {
     return NextResponse.json({ error: "Missing shop parameter" }, { status: 400 });
@@ -25,26 +27,17 @@ export async function GET(req: Request) {
   const db = getDb();
   
   try {
-    // 1. Explicitly check database connection
-    try {
-      await db.$connect();
-    } catch (dbError: any) {
-      console.error("Database Connection Failed:", dbError);
-      return NextResponse.json({ 
-        error: "Database Connection Failed", 
-        message: "Your Supabase instance might be paused or the DATABASE_URL is incorrect.",
-        details: dbError.message 
-      }, { status: 500 });
-    }
-
-    // 2. Get the session for this shop
+    // 1. Get the session for this shop
     const session = await db.session.findFirst({
-      where: { shop },
+      where: { shop: { equals: shop, mode: 'insensitive' } },
     });
 
     if (!session || !session.accessToken) {
-      console.warn(`No active session found for shop: ${shop}`);
-      return NextResponse.json({ error: "Unauthorized. Please install the app." }, { status: 401 });
+      console.warn(`No active session found for shop in DB: ${shop}`);
+      return NextResponse.json({ 
+        error: "Unauthorized", 
+        message: "No session found for this shop. Please re-install the app." 
+      }, { status: 401 });
     }
 
     // Initialize a temporary authenticated client for this request
@@ -52,7 +45,7 @@ export async function GET(req: Request) {
       session: session as any,
     });
 
-    // 3. Fetch unfulfilled and paid orders from Shopify
+    // 2. Fetch unfulfilled and paid orders from Shopify
     const graphqlQuery = `
       query {
         orders(first: 50, query: "fulfillment_status:unfulfilled financial_status:paid") {
@@ -84,26 +77,23 @@ export async function GET(req: Request) {
       }
     `;
 
-    console.log(`Syncing orders for ${shop}...`);
+    console.log(`Syncing orders for sanitized shop: ${shop}...`);
     let response: any;
     try {
       response = await client.request(graphqlQuery);
     } catch (gqlErr: any) {
-      console.error("Shopify GraphQL Request Failed:", gqlErr);
-      // If we have some orders in DB but sync failed, just return them
-      const orders = await db.order.findMany({ where: { shop }, orderBy: { createdAt: "desc" } });
+      console.error("Shopify Sync Request Failed:", gqlErr.message);
+      // Fallback: return existing orders from DB if Shopify API fails
+      const orders = await db.order.findMany({ 
+        where: { shop: { equals: shop, mode: 'insensitive' } }, 
+        orderBy: { createdAt: "desc" } 
+      });
       return NextResponse.json(safeJson(orders));
     }
     
-    if (!response?.data?.orders?.edges) {
-      console.error("Invalid Shopify GraphQL Response Structure:", response);
-      const orders = await db.order.findMany({ where: { shop }, orderBy: { createdAt: "desc" } });
-      return NextResponse.json(safeJson(orders));
-    }
+    const shopifyOrders = response?.data?.orders?.edges?.map((e: any) => e.node) || [];
 
-    const shopifyOrders = response.data.orders.edges.map((e: any) => e.node);
-
-    // 4. Upsert into local DB
+    // 3. Upsert into local DB
     for (const o of shopifyOrders) {
       try {
         const fulfillmentOrderId = o.fulfillmentOrders?.edges?.[0]?.node?.id;
@@ -135,23 +125,22 @@ export async function GET(req: Request) {
           },
         });
       } catch (orderErr) {
-        console.error(`Failed to sync individual order ${o.name}:`, orderErr);
+        console.error(`Error syncing individual order ${o.name}:`, orderErr);
       }
     }
 
-    // 5. Return synced orders from DB for this shop specifically
+    // 4. Return synced orders from DB for this shop specifically
     const orders = await db.order.findMany({
-      where: { shop },
+      where: { shop: { equals: shop, mode: 'insensitive' } },
       orderBy: { createdAt: "desc" },
     });
 
     return NextResponse.json(safeJson(orders));
   } catch (error: any) {
-    console.error("Critical Sync Error:", error);
+    console.error("Critical Route Error:", error);
     return NextResponse.json({ 
-      error: "Critical Sync Failure", 
+      error: "Route Failure", 
       message: error.message,
-      // Stringify to ensure no BigInt serialization crashes
       details: String(error)
     }, { status: 500 });
   }
