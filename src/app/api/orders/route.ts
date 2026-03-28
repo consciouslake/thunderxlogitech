@@ -62,48 +62,67 @@ export async function GET(req: Request) {
       }
     `;
 
-    const response = await client.request(graphqlQuery);
-    const data = response.data as any;
+    const response: any = await client.request(graphqlQuery);
+    
+    if (!response?.data?.orders?.edges) {
+      console.error("Invalid Shopify GraphQL Response:", response);
+      // If we have some orders in DB but sync failed, just return them
+      const orders = await db.order.findMany({ where: { shop }, orderBy: { createdAt: "desc" } });
+      return NextResponse.json(orders);
+    }
 
-    const shopifyOrders = data.orders.edges.map((e: any) => e.node);
+    const shopifyOrders = response.data.orders.edges.map((e: any) => e.node);
 
     // 2. Upsert into local DB
     for (const o of shopifyOrders) {
-      const fulfillmentOrderId = o.fulfillmentOrders.edges[0]?.node?.id;
-      
-      if (!fulfillmentOrderId) continue;
+      try {
+        const fulfillmentOrderId = o.fulfillmentOrders?.edges?.[0]?.node?.id;
+        
+        if (!fulfillmentOrderId) {
+          console.warn(`Skipping order ${o.name}: No fulfillment order found.`);
+          continue;
+        }
 
-      await db.order.upsert({
-        where: { shopifyOrderId: o.id },
-        update: {
-          fulfillmentOrderId: fulfillmentOrderId,
-          shopifyOrderName: o.name,
-          shop: shop, // Update shop just in case
-        },
-        create: {
-          shopifyOrderId: o.id,
-          shop: shop,
-          shopifyOrderName: o.name,
-          fulfillmentOrderId: fulfillmentOrderId,
-          customerName: o.shippingAddress?.name ?? o.email ?? "Unknown",
-          customerEmail: o.email ?? "",
-          phone: o.phone ?? "",
-          shippingAddress: o.shippingAddress?.address1 ?? "",
-          city: o.shippingAddress?.city ?? "",
-          state: o.shippingAddress?.province ?? "",
-          pincode: o.shippingAddress?.zip ?? "",
-        },
-      });
+        await db.order.upsert({
+          where: { shopifyOrderId: o.id },
+          update: {
+            fulfillmentOrderId: fulfillmentOrderId,
+            shopifyOrderName: o.name,
+            shop: shop,
+          },
+          create: {
+            shopifyOrderId: o.id,
+            shop: shop,
+            shopifyOrderName: o.name,
+            fulfillmentOrderId: fulfillmentOrderId,
+            customerName: o.shippingAddress?.name ?? o.email ?? "Unknown",
+            customerEmail: o.email ?? "",
+            phone: o.phone ?? "",
+            shippingAddress: o.shippingAddress?.address1 ?? "",
+            city: o.shippingAddress?.city ?? "",
+            state: o.shippingAddress?.province ?? "",
+            pincode: o.shippingAddress?.zip ?? "",
+          },
+        });
+      } catch (orderErr) {
+        console.error(`Failed to sync individual order ${o.name}:`, orderErr);
+        // Don't crash the whole sync if one order fails
+      }
     }
 
-    // 3. Return synced orders from DB
+    // 3. Return synced orders from DB for this shop specifically
     const orders = await db.order.findMany({
+      where: { shop },
       orderBy: { createdAt: "desc" },
     });
 
     return NextResponse.json(orders);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Sync Error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json({ 
+      error: "Sync Failed", 
+      message: error.message,
+      stack: process.env.NODE_ENV === "development" ? error.stack : undefined
+    }, { status: 500 });
   }
 }
