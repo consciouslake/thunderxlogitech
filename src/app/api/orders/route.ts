@@ -45,10 +45,10 @@ export async function GET(req: Request) {
       session: session as any,
     });
 
-    // 2. Fetch unfulfilled orders from Shopify
+    // 2. Fetch orders from Shopify (Broadened for Debugging)
     const graphqlQuery = `
       query {
-        orders(first: 50, query: "fulfillment_status:unfulfilled") {
+        orders(first: 50) {
           edges {
             node {
               id
@@ -93,20 +93,23 @@ export async function GET(req: Request) {
     }
     
     const shopifyOrders = response?.data?.orders?.edges?.map((e: any) => e.node) || [];
-    console.log(`[SYNC] Found ${shopifyOrders.length} unfulfilled orders in Shopify.`);
+    console.log(`[SYNC] Found ${shopifyOrders.length} total orders in Shopify.`);
 
     // 3. Upsert into local DB
     for (const o of shopifyOrders) {
       try {
-        // Find the first 'OPEN' fulfillment order
-        const fulfillmentOrder = o.fulfillmentOrders?.edges?.find(
-          (e: any) => e.node.status === "OPEN" || e.node.status === "IN_PROGRESS"
+        const foEdges = o.fulfillmentOrders?.edges || [];
+        console.log(`[SYNC] Order ${o.name} has ${foEdges.length} fulfillment orders.`);
+        
+        // Find an active fulfillment order
+        const fulfillmentOrder = foEdges.find(
+          (e: any) => e.node.status === "OPEN" || e.node.status === "IN_PROGRESS" || e.node.status === "FULFILLED"
         )?.node;
         
         const fulfillmentOrderId = fulfillmentOrder?.id;
         
         if (!fulfillmentOrderId) {
-          console.warn(`[SYNC] Skipping order ${o.name}: No active fulfillment order found (Status: ${o.fulfillmentOrders?.edges?.[0]?.node?.status})`);
+          console.warn(`[SYNC] Skipping order ${o.name}: No fulfillment order ID returned. (Check if correct scopes are granted)`);
           continue;
         }
 

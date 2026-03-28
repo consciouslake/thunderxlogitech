@@ -8,9 +8,17 @@ export const getShopify = () => {
     shopifyInstance = shopifyApi({
       apiKey: process.env.SHOPIFY_API_KEY || "",
       apiSecretKey: process.env.SHOPIFY_API_SECRET || "",
-      scopes: ["read_orders", "write_fulfillments", "read_fulfillments"],
+      scopes: [
+        "read_orders", 
+        "write_fulfillments", 
+        "read_fulfillments",
+        "read_merchant_managed_fulfillment_orders",
+        "write_merchant_managed_fulfillment_orders",
+        "read_third_party_fulfillment_orders",
+        "write_third_party_fulfillment_orders"
+      ],
       hostName: process.env.APP_URL?.replace(/https?:\/\//, "") || "localhost:3000",
-      apiVersion: "2025-01" as any, // Using the latest version from dashboard
+      apiVersion: "2024-10" as any, // Using stable version
       isEmbeddedApp: false,
     });
   }
